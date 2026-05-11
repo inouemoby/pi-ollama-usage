@@ -1,0 +1,8 @@
+{
+  "name": "ollama-usage",
+  "version": "1.0.0",
+  "description": "Ollama Cloud usage monitor for pi coding agent. Shows 5h/weekly quotas in footer, provides /ollama command and ollama_usage tool.",
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}
