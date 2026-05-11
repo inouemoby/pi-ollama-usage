@@ -1,21 +1,23 @@
 # pi-ollama-usage
 
-Ollama Cloud 用量监控插件 for [pi coding agent](https://github.com/earendil-works/pi-mono)。
+Ollama Cloud usage monitor extension for [pi coding agent](https://github.com/earendil-works/pi-mono).
 
-在 pi 底部状态栏实时显示 Ollama Cloud 的 5 小时配额和周配额用量，并提供 `/ollama` 命令和 `ollama_usage` 工具供 LLM 调用。
+Displays Ollama Cloud 5-hour and weekly quota usage in pi's footer in real time. Also provides a `/ollama` command and `ollama_usage` tool for LLM-callable quota checks.
 
-## 功能
+## Features
 
-- **底部栏实时显示**：接管 pi 的 footer，显示 token 统计 + `5h:xx% Wk:xx%` 用量，颜色随消耗速度自动变化
-- **`/ollama` 命令**：查看详细的 5h/周配额条形图 + 重置倒计时
-- **`ollama_usage` 工具**：LLM 可主动调用，在做大操作前检查剩余配额
-- **自动激活**：仅在使用 ollama-cloud provider 模型时接管 footer，不影响其他 provider
+- **Footer integration**: Replaces pi's footer with token stats + `5h:xx% Wk:xx%` usage, color-coded by consumption rate
+- **`/ollama` command**: Detailed bar chart view with reset countdowns
+- **`ollama_usage` tool**: LLM can proactively check remaining quota before expensive operations
+- **Auto-activates**: Only takes over the footer when using an ollama-cloud provider model — doesn't affect other providers
 
-## 安装
+## Install
 
-### 方式 1：git 安装（推荐）
+```bash
+pi install git:github.com/inouemoby/pi-ollama-usage
+```
 
-在 `~/.pi/agent/settings.json` 中添加：
+Or via `settings.json`:
 
 ```json
 {
@@ -23,52 +25,42 @@ Ollama Cloud 用量监控插件 for [pi coding agent](https://github.com/earendi
 }
 ```
 
-然后重启 pi。
+## Login
 
-### 方式 2：本地安装
-
-```bash
-# 放到全局扩展目录
-mkdir -p ~/.pi/agent/extensions/ollama-usage
-cp index.ts package.json ~/.pi/agent/extensions/ollama-usage/
-```
-
-## 登录
-
-插件加载后，在 pi 中运行：
+Run in pi:
 
 ```
 /ollama-login
 ```
 
-按提示输入 Ollama Cloud 的 `aid` 和 `__Secure-session` cookie 值。
+Enter your Ollama Cloud `aid` and `__Secure-session` cookie values when prompted.
 
-或者通过环境变量：
+Or set via environment variable:
 
 ```bash
 export OLLAMA_CLOUD_SESSION="aid=xxx; __Secure-session=xxx"
 ```
 
-获取 cookie：浏览器打开 [ollama.com](https://ollama.com)，登录后从 DevTools → Application → Cookies 中复制对应值。
+To get your cookies: open [ollama.com](https://ollama.com) in a browser, log in, then go to DevTools → Application → Cookies and copy the values.
 
-## 命令
+## Commands
 
-| 命令 | 说明 |
-|------|------|
-| `/ollama` | 显示详细用量（条形图 + 百分比 + 重置倒计时） |
-| `/ollama-login` | 设置 cookies（交互式或命令行参数） |
-| `/ollama-logout` | 清除已保存的 cookies |
+| Command | Description |
+|---------|-------------|
+| `/ollama` | Show detailed usage (bar chart + percentages + reset countdown) |
+| `/ollama-login` | Set cookies (interactive or command-line args) |
+| `/ollama-logout` | Clear saved cookies |
 
-## 效果预览
+## Preview
 
 ```
 ~/project (main) • my-session
 ↑303k ↓3.1k 3.8%/1.0M (auto) 5h:18.7% Wk:3.3%   (ollama-cloud) deepseek-v4-pro • medium
 ```
 
-- 绿色百分比 = 用量正常
-- 黄色 = 用量偏高
-- 红色 = 消耗过快，注意配额
+- Green = normal usage
+- Yellow = above expected
+- Red = consuming too fast — watch your quota
 
 ## License
 
