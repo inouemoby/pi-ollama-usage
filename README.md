@@ -19,7 +19,7 @@ Ollama Cloud 用量监控插件 for [pi coding agent](https://github.com/earendi
 
 ```json
 {
-  "packages": ["git:github.com/inouemoby/pi-ollama-usage@master"]
+  "packages": ["git:github.com/inouemoby/pi-ollama-usage@main"]
 }
 ```
 
