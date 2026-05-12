@@ -35,16 +35,16 @@ function formatTokens(count: number): string {
   return `${Math.round(count / 1e6)}M`;
 }
 
-/** Returns color-coded text based on usage vs time elapsed */
-function colorUsage(pct: number, windowMs: number, resetMs: number, theme: any): string {
+/** Returns severity level: 0=normal, 1=above expected, 2=critical */
+function usageSeverity(pct: number, windowMs: number, resetMs: number): number {
   const remainingMs = resetMs - Date.now();
   const elapsedMs = Math.max(0, windowMs - remainingMs);
   const elapsedRatio = elapsedMs / windowMs;
   const expectedPct = elapsedRatio * 100;
 
-  if (pct > expectedPct * 1.5) return theme.fg("error", `${pct}%`);
-  if (pct > expectedPct)      return theme.fg("warning", `${pct}%`);
-  return `${pct}%`;
+  if (pct > expectedPct * 1.5) return 2;
+  if (pct > expectedPct)      return 1;
+  return 0;
 }
 
 // ─── Fetch ───────────────────────────────────────────────────────
@@ -179,11 +179,13 @@ export default function (pi: ExtensionAPI) {
           else cpStr = `${cp}%/${formatTokens(cw)} (auto)`;
           parts.push(cpStr);
 
-          // Ollama usage (color-coded, appended to stats left)
+          // Ollama usage (exclamation marks for severity, no color)
           if (usage && usage.sessionPercent >= 0 && usage.weeklyPercent >= 0) {
-            const sColor = colorUsage(usage.sessionPercent, FIVE_HOUR_MS, usage.sessionResetMs, theme);
-            const wColor = colorUsage(usage.weeklyPercent, WEEK_MS, usage.weeklyResetMs, theme);
-            parts.push(`5h:${sColor} Wk:${wColor}`);
+            const sSev = usageSeverity(usage.sessionPercent, FIVE_HOUR_MS, usage.sessionResetMs);
+            const wSev = usageSeverity(usage.weeklyPercent, WEEK_MS, usage.weeklyResetMs);
+            const sFlag = sSev === 2 ? "!!" : sSev === 1 ? "!" : "";
+            const wFlag = wSev === 2 ? "!!" : wSev === 1 ? "!" : "";
+            parts.push(`${sFlag}5h:${usage.sessionPercent}% ${wFlag}Wk:${usage.weeklyPercent}%`);
           }
 
           let left = parts.join(" ");
