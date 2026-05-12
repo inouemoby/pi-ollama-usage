@@ -6,7 +6,7 @@ Displays Ollama Cloud 5-hour and weekly quota usage in pi's footer in real time.
 
 ## Features
 
-- **Footer integration**: Replaces pi's footer with token stats + `5h:xx% Wk:xx%` usage, color-coded by consumption rate
+- **Footer integration**: Replaces pi's footer with token stats + `5h:xx% Wk:xx%` usage with exclamation mark alerts for over-consumption
 - **`/ollama` command**: Detailed bar chart view with reset countdowns
 - **`ollama_usage` tool**: LLM can proactively check remaining quota before expensive operations
 - **Auto-activates**: Only takes over the footer when using an ollama-cloud provider model — doesn't affect other providers
@@ -58,9 +58,9 @@ To get your cookies: open [ollama.com](https://ollama.com) in a browser, log in,
 ↑303k ↓3.1k 3.8%/1.0M (auto) 5h:18.7% Wk:3.3%   (ollama-cloud) deepseek-v4-pro • medium
 ```
 
-- Green = normal usage
-- Yellow = above expected
-- Red = consuming too fast — watch your quota
+- Normal = on track
+- `!` = usage above expected rate
+- `!!` = usage exceeds 1.5× expected rate — critical
 
 ## License
 
