@@ -305,7 +305,7 @@ export default function (pi: ExtensionAPI) {
     description: "Check Ollama Cloud usage: 5-hour and weekly quota percentages from server.",
     promptSnippet: "Check Ollama Cloud usage (5h & weekly quotas)",
     promptGuidelines: [
-      "Use ollama_usage to check Ollama Cloud quota before expensive LLM operations.",
+      "Use ollama_usage to check Ollama Cloud quota before expensive operations.",
       "Use ollama_usage when the user asks about Ollama usage, limits, or remaining credits.",
       "Proactively call ollama_usage at the start of a task to ensure sufficient quota.",
     ],
