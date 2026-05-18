@@ -2,6 +2,9 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { homedir } from "os";
+import { join } from "path";
+import { readFileSync, writeFileSync, mkdirSync } from "fs";
 
 // ─── Types ───────────────────────────────────────────────────────
 interface UsageData {
@@ -83,6 +86,33 @@ async function fetchRemote(cookie: string): Promise<UsageData> {
 }
 
 // ─── Main ────────────────────────────────────────────────────────
+// ─── Global Cookie Storage ────────────────────────────────────────
+const COOKIE_DIR = join(homedir(), ".config", "pi-ollama-usage");
+const COOKIE_FILE = join(COOKIE_DIR, "session.json");
+
+function readGlobalCookie(): string {
+  try {
+    const raw = readFileSync(COOKIE_FILE, "utf-8");
+    const obj = JSON.parse(raw);
+    return obj.cookie ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeGlobalCookie(cookie: string) {
+  try {
+    mkdirSync(COOKIE_DIR, { recursive: true });
+    writeFileSync(COOKIE_FILE, JSON.stringify({ cookie, _savedAt: new Date().toISOString() }), "utf-8");
+  } catch { /* best effort */ }
+}
+
+function clearGlobalCookie() {
+  try {
+    writeFileSync(COOKIE_FILE, JSON.stringify({ cookie: "", _clearedAt: new Date().toISOString() }), "utf-8");
+  } catch { /* best effort */ }
+}
+
 export default function (pi: ExtensionAPI) {
   let cookie = "";
   let usage: UsageData | null = null;
@@ -91,7 +121,7 @@ export default function (pi: ExtensionAPI) {
   let _tui: any = null;
   let thinkingLevel = "off";
 
-  function saveCookie() { pi.appendEntry("ollama-cookie", { cookie }); }
+  function saveCookie() { writeGlobalCookie(cookie); }
 
   async function getUsage(): Promise<UsageData> {
     if (!cookie) throw new Error("Not logged in. Run /ollama-login.");
@@ -224,11 +254,8 @@ export default function (pi: ExtensionAPI) {
 
   // ── Events ─────────────────────────────────────────────────
   pi.on("session_start", async (_e, ctx) => {
-    for (const entry of ctx.sessionManager.getEntries()) {
-      if (entry.type === "custom" && (entry as any).customType === "ollama-cookie") {
-        cookie = (entry as any).data?.cookie ?? "";
-      }
-    }
+    // Load cookie from global file (persists across all sessions/directories)
+    cookie = readGlobalCookie();
     if (!cookie) cookie = process.env.OLLAMA_CLOUD_SESSION ?? "";
     thinkingLevel = pi.getThinkingLevel?.() || "off";
     toggleFooter(ctx);
@@ -291,7 +318,7 @@ export default function (pi: ExtensionAPI) {
     description: "Clear session",
     handler: async (_args, ctx) => {
       cookie = ""; usage = null;
-      pi.appendEntry("ollama-cookie", { cookie: "" });
+      clearGlobalCookie();
       ctx.ui.setFooter(undefined as any);
       footerOn = false; _tui = null;
       ctx.ui.notify("✓ Ollama session cleared", "success");
