@@ -76,7 +76,6 @@ Cookie is stored globally at `~/.config/pi-ollama-usage/session.json` — config
 ## Related
 
 - [pi-zai-usage](https://github.com/inouemoby/pi-zai-usage) — Same tool for ZAI (智谱/bigmodel.cn)
-- [pi-setting](https://github.com/inouemoby/pi-setting) — Pi settings backup/restore across devices
 
 ## License
 
