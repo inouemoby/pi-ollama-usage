@@ -9,19 +9,20 @@ Displays Ollama Cloud 5-hour and weekly quota usage in pi's footer in real time.
 - **Footer integration**: Replaces pi's footer with token stats + `5h:xx% Wk:xx%` usage with exclamation mark alerts for over-consumption
 - **`/ollama` command**: Detailed bar chart view with reset countdowns
 - **`ollama_usage` tool**: Proactively check remaining quota before expensive operations
+- **Global login**: Cookie persists across all pi sessions and directories — login once, works everywhere
 - **Auto-activates**: Only takes over the footer when using an ollama-cloud provider model — doesn't affect other providers
 
 ## Install
 
 ```bash
-pi install git:github.com/inouemoby/pi-ollama-usage
+pi install https://github.com/inouemoby/pi-ollama-usage.git
 ```
 
 Or via `settings.json`:
 
 ```json
 {
-  "packages": ["git:github.com/inouemoby/pi-ollama-usage@main"]
+  "packages": ["https://github.com/inouemoby/pi-ollama-usage.git"]
 }
 ```
 
@@ -34,6 +35,12 @@ Run in pi:
 ```
 
 Enter your Ollama Cloud `aid` and `__Secure-session` cookie values when prompted.
+
+Or via command-line args:
+
+```
+/ollama-login <aid-value> <__Secure-session-value>
+```
 
 Or set via environment variable:
 
@@ -61,6 +68,15 @@ To get your cookies: open [ollama.com](https://ollama.com) in a browser, log in,
 - Normal = on track
 - `!` = usage above expected rate
 - `!!` = usage exceeds 1.5× expected rate — critical
+
+## Data Storage
+
+Cookie is stored globally at `~/.config/pi-ollama-usage/session.json` — configure once, works in all pi sessions across all directories.
+
+## Related
+
+- [pi-zai-usage](https://github.com/inouemoby/pi-zai-usage) — Same tool for ZAI (智谱/bigmodel.cn)
+- [pi-setting](https://github.com/inouemoby/pi-setting) — Pi settings backup/restore across devices
 
 ## License
 
