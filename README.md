@@ -15,7 +15,7 @@ Displays Ollama Cloud 5-hour and weekly quota usage in pi's footer in real time.
 ## Install
 
 ```bash
-pi install https://github.com/inouemoby/pi-ollama-usage.git
+pi install git:github.com/inouemoby/pi-ollama-usage
 ```
 
 Or via `settings.json`:
