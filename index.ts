@@ -227,11 +227,10 @@ export default function (pi: ExtensionAPI) {
             const tl = thinkingLevel;
             right = tl === "off" ? `${right} • thinking off` : `${right} • ${tl}`;
           }
-          if (fd.getAvailableProviderCount?.() > 1 && m) {
-            const withProv = `(${m.provider}) ${right}`;
-            if (visibleWidth(left) + 2 + visibleWidth(withProv) <= width) {
-              right = withProv;
-            }
+          // Always show provider label (this footer is only displayed for ollama-cloud)
+          const withProv = `(ollama) ${right}`;
+          if (visibleWidth(left) + 2 + visibleWidth(withProv) <= width) {
+            right = withProv;
           }
 
           const lw = visibleWidth(left);
