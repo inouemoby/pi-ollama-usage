@@ -60,11 +60,11 @@ async function fetchRemote(cookie: string): Promise<UsageData> {
   const html = await resp.text();
 
   const sm = html.match(
-    /<span class="text-sm">Session usage<\/span>\s*<span class="text-sm">([\d.]+)% used<\/span>/,
+    /<span class="text-sm\s*">Session usage<\/span>\s*<span class="text-sm\s*">\s*([\d.]+)%\s*used\s*<\/span>/,
   );
   const afterS = html.indexOf("Session usage");
   const wm = (afterS > 0 ? html.slice(afterS + 20) : html).match(
-    /<span class="text-sm">Weekly usage<\/span>\s*<span class="text-sm">([\d.]+)% used<\/span>/,
+    /<span class="text-sm\s*">Weekly usage<\/span>\s*<span class="text-sm\s*">\s*([\d.]+)%\s*used\s*<\/span>/,
   );
 
   let c = 0, sR = "", wR = "";
