@@ -59,13 +59,10 @@ async function fetchRemote(cookie: string): Promise<UsageData> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const html = await resp.text();
 
-  const sm = html.match(
-    /<span class="text-sm\s*">Session usage<\/span>\s*<span class="text-sm\s*">\s*([\d.]+)%\s*used\s*<\/span>/,
-  );
-  const afterS = html.indexOf("Session usage");
-  const wm = (afterS > 0 ? html.slice(afterS + 20) : html).match(
-    /<span class="text-sm\s*">Weekly usage<\/span>\s*<span class="text-sm\s*">\s*([\d.]+)%\s*used\s*<\/span>/,
-  );
+  const afterSession = html.indexOf('Session usage');
+  const sm = afterSession >= 0 ? html.slice(afterSession, afterSession + 300).match(/([\d.]+)%\s*used/) : null;
+  const afterWeekly = html.indexOf('Weekly usage');
+  const wm = afterWeekly >= 0 ? html.slice(afterWeekly, afterWeekly + 300).match(/([\d.]+)%\s*used/) : null;
 
   let c = 0, sR = "", wR = "";
   const re = /data-time="([^"]+)"[^>]*>\s*Resets in ([^<]+)/g;
