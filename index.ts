@@ -3,8 +3,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { homedir } from "os";
-import { join } from "path";
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { resolve, dirname } from "path";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 
 // ─── Types ───────────────────────────────────────────────────────
 interface UsageData {
@@ -83,31 +83,42 @@ async function fetchRemote(cookie: string): Promise<UsageData> {
 }
 
 // ─── Main ────────────────────────────────────────────────────────
-// ─── Global Cookie Storage ────────────────────────────────────────
-const COOKIE_DIR = join(homedir(), ".config", "pi-ollama-usage");
-const COOKIE_FILE = join(COOKIE_DIR, "session.json");
+// ─── Settings Storage ────────────────────────────────────────────
+const SETTINGS_KEY = "ollamaCloud";
 
-function readGlobalCookie(): string {
-  try {
-    const raw = readFileSync(COOKIE_FILE, "utf-8");
-    const obj = JSON.parse(raw);
-    return obj.cookie ?? "";
-  } catch {
-    return "";
-  }
+function getSettingsPath(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  return resolve(home, ".pi", "agent", "settings.json");
 }
 
-function writeGlobalCookie(cookie: string) {
+function readSettings(): Record<string, any> {
   try {
-    mkdirSync(COOKIE_DIR, { recursive: true });
-    writeFileSync(COOKIE_FILE, JSON.stringify({ cookie, _savedAt: new Date().toISOString() }), "utf-8");
-  } catch { /* best effort */ }
+    const path = getSettingsPath();
+    if (!existsSync(path)) return {};
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch { return {}; }
 }
 
-function clearGlobalCookie() {
-  try {
-    writeFileSync(COOKIE_FILE, JSON.stringify({ cookie: "", _clearedAt: new Date().toISOString() }), "utf-8");
-  } catch { /* best effort */ }
+function writeSettings(data: Record<string, any>) {
+  const path = getSettingsPath();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(data, null, 2), "utf-8");
+}
+
+function readCookie(): string {
+  return readSettings()[SETTINGS_KEY]?.cookie ?? "";
+}
+
+function saveCookie(cookie: string) {
+  const settings = readSettings();
+  settings[SETTINGS_KEY] = { ...(settings[SETTINGS_KEY] || {}), cookie };
+  writeSettings(settings);
+}
+
+function clearCookie() {
+  const settings = readSettings();
+  settings[SETTINGS_KEY] = { ...(settings[SETTINGS_KEY] || {}), cookie: "" };
+  writeSettings(settings);
 }
 
 export default function (pi: ExtensionAPI) {
@@ -118,7 +129,7 @@ export default function (pi: ExtensionAPI) {
   let _tui: any = null;
   let thinkingLevel = "off";
 
-  function saveCookie() { writeGlobalCookie(cookie); }
+
 
   async function getUsage(): Promise<UsageData> {
     if (!cookie) throw new Error("Not logged in. Run /ollama-login.");
@@ -250,8 +261,8 @@ export default function (pi: ExtensionAPI) {
 
   // ── Events ─────────────────────────────────────────────────
   pi.on("session_start", async (_e, ctx) => {
-    // Load cookie from global file (persists across all sessions/directories)
-    cookie = readGlobalCookie();
+    // Load cookie from settings.json
+    cookie = readCookie();
     if (!cookie) cookie = process.env.OLLAMA_CLOUD_SESSION ?? "";
     thinkingLevel = pi.getThinkingLevel?.() || "off";
     toggleFooter(ctx);
@@ -303,7 +314,7 @@ export default function (pi: ExtensionAPI) {
         if (!s?.trim()) return ctx.ui.notify("Cancelled.", "warning");
         cookie = `aid=${a.trim()}; __Secure-session=${s.trim()}`;
       }
-      saveCookie(); usage = null; toggleFooter(ctx);
+      saveCookie(cookie); usage = null; toggleFooter(ctx);
       ctx.ui.notify("✓ Ollama session saved!", "success");
       refresh(ctx);
     },
@@ -314,7 +325,7 @@ export default function (pi: ExtensionAPI) {
     description: "Clear session",
     handler: async (_args, ctx) => {
       cookie = ""; usage = null;
-      clearGlobalCookie();
+      clearCookie();
       ctx.ui.setFooter(undefined as any);
       footerOn = false; _tui = null;
       ctx.ui.notify("✓ Ollama session cleared", "success");
