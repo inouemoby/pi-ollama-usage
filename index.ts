@@ -4,7 +4,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { homedir } from "os";
 import { resolve, dirname } from "path";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from "fs";
 
 // ─── Types ───────────────────────────────────────────────────────
 interface UsageData {
@@ -189,6 +189,12 @@ export default function (pi: ExtensionAPI) {
   let agentBusy = false;                  // agent 生成中 = true,定时刷新只在闲时执行
   let idleTimer: ReturnType<typeof setInterval> | null = null;
 
+  // ── Debug (临时) ─────────────────────────────────────────
+  const DBG_FILE = resolve(homedir(), ".pi", "agent", "ollama-usage-debug.log");
+  function dbg(msg: string) {
+    try { appendFileSync(DBG_FILE, `[${new Date().toISOString()}] ${msg}\n`); } catch { /* ignore */ }
+  }
+
 
 
   async function getUsage(): Promise<UsageData> {
@@ -203,26 +209,35 @@ export default function (pi: ExtensionAPI) {
 
   // ── Refresh ─────────────────────────────────────────────────
   async function refresh(ctx: any) {
-    if (!cookie) return;
+    if (!cookie) { dbg("refresh: no cookie"); return; }
     if (!isOllama(ctx)) {
+      dbg(`refresh: not ollama (${ctx.model?.provider}), clearing`);
       if (usage) { usage = null; toggleFooter(ctx); }
       return;
     }
-    try { await getUsage(); trigger(); } catch { /* silent */ }
+    try {
+      dbg("refresh: fetching...");
+      await getUsage();
+      dbg(`refresh: fetched ok, usage 5h=${usage?.sessionPercent}% models=${JSON.stringify(usage?.sessionModels ?? {})}`);
+      trigger();
+    } catch (e: any) { dbg(`refresh: fetch FAILED: ${e?.message}`); }
   }
 
   // ── Footer ──────────────────────────────────────────────────
   function toggleFooter(ctx: any) {
+    dbg(`toggleFooter: ollama=${isOllama(ctx)} cookie=${!!cookie} footerOn=${footerOn}`);
     if (isOllama(ctx) && cookie) {
       if (!footerOn) {
         ctx.ui.setFooter(buildFooter(ctx));
         footerOn = true;
+        dbg("toggleFooter: footer MOUNTED");
       }
     } else {
       if (footerOn) {
         _tui = null;
         ctx.ui.setFooter(undefined as any);
         footerOn = false;
+        dbg("toggleFooter: footer UNMOUNTED");
       }
     }
   }
@@ -232,7 +247,9 @@ export default function (pi: ExtensionAPI) {
       _tui = tui;
       const unsub = fd.onBranchChange(() => tui.requestRender());
       return {
-        dispose: () => { unsub(); _tui = null; },
+        // footer 可能被 pi 或其他扩展从外部 dispose(我们不知情),
+        // 必须在这里同步 footerOn,否则 toggleFooter 认为已挂载而拒绝重建
+        dispose: () => { unsub(); _tui = null; footerOn = false; },
         invalidate() {},
         render(width: number): string[] {
           const sm = ctx.sessionManager;
@@ -381,7 +398,22 @@ export default function (pi: ExtensionAPI) {
     if (cookie) refresh(ctx);
   });
 
-  pi.on("model_select", async (_e, ctx) => { latestCtx = ctx; toggleFooter(ctx); if (cookie) refresh(ctx); });
+  pi.on("model_select", async (_e, ctx) => {
+    latestCtx = ctx;
+    dbg(`model_select: new=${ctx.model?.provider}/${ctx.model?.id} prev=${_e?.previousModel?.provider}/${_e?.previousModel?.id}`);
+    if (isOllama(ctx)) {
+      // 延迟到 macrotask: 让排在我们后面的扩展
+      // (如 pi-codex-usage) 的卸载逻辑先跑完,我们再挂载,避免被覆盖
+      setTimeout(() => {
+        toggleFooter(ctx);
+        if (cookie) refresh(ctx);
+      }, 0);
+    } else {
+      // 切走时立即卸载自己,给目标 provider 的扩展让位
+      toggleFooter(ctx);
+      if (cookie) refresh(ctx);
+    }
+  });
   pi.on("thinking_level_select", async (event: any) => { thinkingLevel = event.level || "off"; trigger(); });
 
   // ── /ollama ────────────────────────────────────────────────
