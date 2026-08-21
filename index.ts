@@ -13,6 +13,7 @@ interface UsageData {
   weeklyPercent: number;
   weeklyResetMs: number;    // epoch ms of next reset
   sessionModels: Record<string, number>;  // model name -> % of total 5h quota
+  weeklyModels: Record<string, number>;   // model name -> % of total weekly quota
   _ts: number;
 }
 
@@ -80,6 +81,8 @@ async function fetchRemote(cookie: string): Promise<UsageData> {
   const sessionModels: Record<string, number> = {};
   if (sm) {
     const sp = parseFloat(sm[1]);
+    // 与页面上 5h 百分比显示的小数位数一致 (页面显示 "2.8%" → 1 位, "12%" → 0 位)
+    const decimals = (sm[1].split(".")[1] || "").length;
     const trackIdx = html.indexOf('aria-label="Session usage');
     const weeklyTrackIdx = html.indexOf('aria-label="Weekly usage');
     const segEnd = weeklyTrackIdx > trackIdx ? weeklyTrackIdx : html.length;
@@ -93,7 +96,32 @@ async function fetchRemote(cookie: string): Promise<UsageData> {
         const segW = block.match(/style="[^"]*width:\s*([\d.]+)%/);
         const segM = block.match(/data-model="([^"]+)"/);
         if (segW && segM) {
-          sessionModels[segM[1]] = +(sp * parseFloat(segW[1]) / 100).toFixed(1);
+          sessionModels[segM[1]] = +(sp * parseFloat(segW[1]) / 100).toFixed(decimals);
+        }
+      }
+    }
+  }
+
+  // ── Per-model segments inside the weekly meter ──
+  // 同上: 模型占 weekly 总配额 = weeklyPercent × segmentWidth / 100
+  const weeklyModels: Record<string, number> = {};
+  if (wm) {
+    const wp = parseFloat(wm[1]);
+    const wDecimals = (wm[1].split(".")[1] || "").length;
+    const wTrackIdx = html.indexOf('aria-label="Weekly usage');
+    if (wTrackIdx >= 0) {
+      // weekly meter 是页面最后一个 meter,解析到其后的 "Resets in" 为止
+      const wEndIdx = html.indexOf("Resets in", wTrackIdx);
+      const wRegion = html.slice(wTrackIdx, wEndIdx > wTrackIdx ? wEndIdx : html.length);
+      const btnRe = /<button\b[\s\S]*?<\/button>/g;
+      let b: RegExpExecArray | null;
+      while ((b = btnRe.exec(wRegion)) !== null) {
+        const block = b[0];
+        if (!block.includes("data-usage-segment")) continue;
+        const segW = block.match(/style="[^"]*width:\s*([\d.]+)%/);
+        const segM = block.match(/data-model="([^"]+)"/);
+        if (segW && segM) {
+          weeklyModels[segM[1]] = +(wp * parseFloat(segW[1]) / 100).toFixed(wDecimals);
         }
       }
     }
@@ -105,6 +133,7 @@ async function fetchRemote(cookie: string): Promise<UsageData> {
     weeklyPercent: wm ? parseFloat(wm[1]) : -1,
     weeklyResetMs: new Date(wR).getTime(),
     sessionModels,
+    weeklyModels,
     _ts: Date.now(),
   };
 }
@@ -152,9 +181,13 @@ export default function (pi: ExtensionAPI) {
   let cookie = "";
   let usage: UsageData | null = null;
   const CACHE_MS = 60_000;
+  const IDLE_REFRESH_MS = 5 * 60 * 1000;  // 闲时定时刷新: 5 分钟
   let footerOn = false;
   let _tui: any = null;
   let thinkingLevel = "off";
+  let latestCtx: any = null;              // 最近一次事件拿到的 ctx,供定时器使用
+  let agentBusy = false;                  // agent 生成中 = true,定时刷新只在闲时执行
+  let idleTimer: ReturnType<typeof setInterval> | null = null;
 
 
 
@@ -245,22 +278,28 @@ export default function (pi: ExtensionAPI) {
           parts.push(cpStr);
 
           // Ollama usage (exclamation marks for severity, no color)
+          let usageFull = "", usageNoWkModel = "", usageIdx = -1;
           if (usage && usage.sessionPercent >= 0 && usage.weeklyPercent >= 0) {
             const sSev = usageSeverity(usage.sessionPercent, FIVE_HOUR_MS, usage.sessionResetMs);
             const wSev = usageSeverity(usage.weeklyPercent, WEEK_MS, usage.weeklyResetMs);
             const sFlag = sSev === 2 ? "!!" : sSev === 1 ? "!" : "";
             const wFlag = wSev === 2 ? "!!" : wSev === 1 ? "!" : "";
-            // Current model's share of the *total* 5h quota, e.g. "2.8%(1.2%)"
+            // Current model's share of the *total* quotas, e.g. "5h:2.8%(1.2%) Wk:17.4%(0.5%)"
             const curId = ctx.model?.id ?? "";
-            let modelPct: number | undefined;
-            for (const [name, pct] of Object.entries(usage.sessionModels)) {
-              if (curId === name || curId.startsWith(name) || name.startsWith(curId)) {
-                modelPct = pct;
-                break;
+            const findPct = (models: Record<string, number>) => {
+              for (const [name, pct] of Object.entries(models || {})) {
+                if (curId === name || curId.startsWith(name) || name.startsWith(curId)) return pct;
               }
-            }
-            const modelSuffix = modelPct !== undefined ? `(${modelPct}%)` : "";
-            parts.push(`${sFlag}5h:${usage.sessionPercent}%${modelSuffix} ${wFlag}Wk:${usage.weeklyPercent}%`);
+              return undefined;
+            };
+            const sPct = findPct(usage.sessionModels);
+            const wPct = findPct(usage.weeklyModels);
+            const sSuffix = sPct !== undefined ? `(${sPct}%)` : "";
+            const wSuffix = wPct !== undefined ? `(${wPct}%)` : "";
+            usageFull = `${sFlag}5h:${usage.sessionPercent}%${sSuffix} ${wFlag}Wk:${usage.weeklyPercent}%${wSuffix}`;
+            usageNoWkModel = `${sFlag}5h:${usage.sessionPercent}%${sSuffix} ${wFlag}Wk:${usage.weeklyPercent}%`;
+            usageIdx = parts.length;
+            parts.push(usageFull);
           }
 
           let left = parts.join(" ");
@@ -272,10 +311,17 @@ export default function (pi: ExtensionAPI) {
             const tl = thinkingLevel;
             right = tl === "off" ? `${right} • thinking off` : `${right} • ${tl}`;
           }
-          // Always show provider label (this footer is only displayed for ollama-cloud)
+          // 宽度不足时的降级顺序:
+          //   ① 先去掉提供商前缀 "(ollama) "
+          //   ② 还不够 → 去掉 weekly 的模型括号 "(x%)"
           const withProv = `(ollama) ${right}`;
           if (visibleWidth(left) + 2 + visibleWidth(withProv) <= width) {
             right = withProv;
+          }
+          if (usageIdx >= 0 && usageNoWkModel !== usageFull &&
+              visibleWidth(left) + 2 + visibleWidth(right) > width) {
+            parts[usageIdx] = usageNoWkModel;
+            left = parts.join(" ");
           }
 
           const lw = visibleWidth(left);
@@ -296,19 +342,47 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
+  // ── Idle timer (每 5 分钟闲时刷新) ───────────────────────
+  function startIdleTimer() {
+    stopIdleTimer();
+    idleTimer = setInterval(async () => {
+      if (agentBusy) return;                    // 生成中,跳过本轮
+      if (!cookie) return;
+      const ctx = latestCtx;
+      if (!ctx || !isOllama(ctx)) return;       // 只在 ollama-cloud 模型下刷新
+      try { await getUsage(); trigger(); } catch { /* silent */ }
+    }, IDLE_REFRESH_MS);
+    (idleTimer as any).unref?.();               // 不阻止进程退出
+  }
+
+  function stopIdleTimer() {
+    if (idleTimer) { clearInterval(idleTimer); idleTimer = null; }
+  }
+
   // ── Events ─────────────────────────────────────────────────
   pi.on("session_start", async (_e, ctx) => {
+    latestCtx = ctx;
     // Load cookie from settings.json
     cookie = readCookie();
     if (!cookie) cookie = process.env.OLLAMA_CLOUD_SESSION ?? "";
     thinkingLevel = pi.getThinkingLevel?.() || "off";
+    footerOn = false;                            // 强制重建 footer,确保闭包捕获新 ctx
     toggleFooter(ctx);
+    if (cookie) refresh(ctx);
+    startIdleTimer();
+  });
+
+  pi.on("session_shutdown", async () => { stopIdleTimer(); });
+
+  pi.on("agent_start", async (_e, ctx) => { latestCtx = ctx; agentBusy = true; });
+  pi.on("agent_end", async (_e, ctx) => {
+    latestCtx = ctx;
+    agentBusy = false;
     if (cookie) refresh(ctx);
   });
 
-  pi.on("model_select", async (_e, ctx) => { toggleFooter(ctx); if (cookie) refresh(ctx); });
+  pi.on("model_select", async (_e, ctx) => { latestCtx = ctx; toggleFooter(ctx); if (cookie) refresh(ctx); });
   pi.on("thinking_level_select", async (event: any) => { thinkingLevel = event.level || "off"; trigger(); });
-  pi.on("agent_end", async (_e, ctx) => { if (cookie) refresh(ctx); });
 
   // ── /ollama ────────────────────────────────────────────────
   pi.registerCommand("ollama", {
