@@ -12,6 +12,7 @@ interface UsageData {
   sessionResetMs: number;   // epoch ms of next reset
   weeklyPercent: number;
   weeklyResetMs: number;    // epoch ms of next reset
+  sessionModels: Record<string, number>;  // model name -> % of total 5h quota
   _ts: number;
 }
 
@@ -73,11 +74,37 @@ async function fetchRemote(cookie: string): Promise<UsageData> {
     if (c === 2) wR = m[1];
   }
 
+  // ── Per-model segments inside the session (5h) meter ──
+  // Segment width is relative to the *used* portion of the bar, so:
+  //   model's share of total quota = sessionPercent × segmentWidth / 100
+  const sessionModels: Record<string, number> = {};
+  if (sm) {
+    const sp = parseFloat(sm[1]);
+    const trackIdx = html.indexOf('aria-label="Session usage');
+    const weeklyTrackIdx = html.indexOf('aria-label="Weekly usage');
+    const segEnd = weeklyTrackIdx > trackIdx ? weeklyTrackIdx : html.length;
+    if (trackIdx >= 0) {
+      const region = html.slice(trackIdx, segEnd);
+      const btnRe = /<button\b[\s\S]*?<\/button>/g;
+      let b: RegExpExecArray | null;
+      while ((b = btnRe.exec(region)) !== null) {
+        const block = b[0];
+        if (!block.includes("data-usage-segment")) continue;
+        const segW = block.match(/style="[^"]*width:\s*([\d.]+)%/);
+        const segM = block.match(/data-model="([^"]+)"/);
+        if (segW && segM) {
+          sessionModels[segM[1]] = +(sp * parseFloat(segW[1]) / 100).toFixed(1);
+        }
+      }
+    }
+  }
+
   return {
     sessionPercent: sm ? parseFloat(sm[1]) : -1,
     sessionResetMs: new Date(sR).getTime(),
     weeklyPercent: wm ? parseFloat(wm[1]) : -1,
     weeklyResetMs: new Date(wR).getTime(),
+    sessionModels,
     _ts: Date.now(),
   };
 }
@@ -223,7 +250,17 @@ export default function (pi: ExtensionAPI) {
             const wSev = usageSeverity(usage.weeklyPercent, WEEK_MS, usage.weeklyResetMs);
             const sFlag = sSev === 2 ? "!!" : sSev === 1 ? "!" : "";
             const wFlag = wSev === 2 ? "!!" : wSev === 1 ? "!" : "";
-            parts.push(`${sFlag}5h:${usage.sessionPercent}% ${wFlag}Wk:${usage.weeklyPercent}%`);
+            // Current model's share of the *total* 5h quota, e.g. "2.8%(1.2%)"
+            const curId = ctx.model?.id ?? "";
+            let modelPct: number | undefined;
+            for (const [name, pct] of Object.entries(usage.sessionModels)) {
+              if (curId === name || curId.startsWith(name) || name.startsWith(curId)) {
+                modelPct = pct;
+                break;
+              }
+            }
+            const modelSuffix = modelPct !== undefined ? `(${modelPct}%)` : "";
+            parts.push(`${sFlag}5h:${usage.sessionPercent}%${modelSuffix} ${wFlag}Wk:${usage.weeklyPercent}%`);
           }
 
           let left = parts.join(" ");
