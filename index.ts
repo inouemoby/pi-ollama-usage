@@ -1,7 +1,6 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
 import { homedir } from "os";
 import { resolve, dirname } from "path";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from "fs";
@@ -475,31 +474,4 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ── ollama_usage tool ──────────────────────────────────────
-  pi.registerTool({
-    name: "ollama_usage",
-    label: "Ollama Usage",
-    description: "Get current Ollama Cloud usage.",
-    parameters: Type.Object({}),
-    async execute(_id: any, _p: any, _s: any, _up: any, ctx: any) {
-      try {
-        const d = await getUsage();
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              fiveHour: { used: d.sessionPercent, remaining: +(100 - d.sessionPercent).toFixed(1), resetsIn: humanDuration(d.sessionResetMs - Date.now()) },
-              weekly: { used: d.weeklyPercent, remaining: +(100 - d.weeklyPercent).toFixed(1), resetsIn: humanDuration(d.weeklyResetMs - Date.now()) },
-            }, null, 2),
-          }],
-          details: {
-            fiveHour: { used: d.sessionPercent, remaining: +(100 - d.sessionPercent).toFixed(1), resetsIn: humanDuration(d.sessionResetMs - Date.now()) },
-            weekly: { used: d.weeklyPercent, remaining: +(100 - d.weeklyPercent).toFixed(1), resetsIn: humanDuration(d.weeklyResetMs - Date.now()) },
-          },
-        };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    },
-  });
 }
