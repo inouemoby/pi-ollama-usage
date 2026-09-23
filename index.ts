@@ -182,6 +182,7 @@ export default function (pi: ExtensionAPI) {
   const CACHE_MS = 60_000;
   const IDLE_REFRESH_MS = 5 * 60 * 1000;  // 闲时定时刷新: 5 分钟
   let footerOn = false;
+  let footerGeneration = 0;
   let _tui: any = null;
   let thinkingLevel = "off";
   let latestCtx: any = null;              // 最近一次事件拿到的 ctx,供定时器使用
@@ -204,7 +205,13 @@ export default function (pi: ExtensionAPI) {
   }
 
   function isOllama(ctx: any) { return ctx.model?.provider === "ollama-cloud"; }
-  function trigger() { if (_tui) setTimeout(() => _tui.requestRender?.(), 0); }
+  function requestRenderSafe(tui: any): void {
+    try { tui?.requestRender?.(); } catch { /* footer may already be disposed */ }
+  }
+
+  function trigger() {
+    setTimeout(() => requestRenderSafe(_tui), 0);
+  }
 
   // ── Refresh ─────────────────────────────────────────────────
   async function refresh(ctx: any) {
@@ -223,10 +230,10 @@ export default function (pi: ExtensionAPI) {
   }
 
   // ── Footer ──────────────────────────────────────────────────
-  function toggleFooter(ctx: any) {
-    dbg(`toggleFooter: ollama=${isOllama(ctx)} cookie=${!!cookie} footerOn=${footerOn}`);
+  function toggleFooter(ctx: any, force = false) {
+    dbg(`toggleFooter: ollama=${isOllama(ctx)} cookie=${!!cookie} footerOn=${footerOn} force=${force}`);
     if (isOllama(ctx) && cookie) {
-      if (!footerOn) {
+      if (!footerOn || force) {
         ctx.ui.setFooter(buildFooter(ctx));
         footerOn = true;
         dbg("toggleFooter: footer MOUNTED");
@@ -242,13 +249,22 @@ export default function (pi: ExtensionAPI) {
   }
 
   function buildFooter(ctx: any) {
+    const generation = ++footerGeneration;
     return (tui: any, theme: any, fd: any) => {
       _tui = tui;
-      const unsub = fd.onBranchChange(() => tui.requestRender());
+      const unsub = fd.onBranchChange(() => {
+        if (generation === footerGeneration) requestRenderSafe(tui);
+      });
       return {
         // footer 可能被 pi 或其他扩展从外部 dispose(我们不知情),
-        // 必须在这里同步 footerOn,否则 toggleFooter 认为已挂载而拒绝重建
-        dispose: () => { unsub(); _tui = null; footerOn = false; },
+        // 必须同步 footerOn,并避免旧 footer 清理新 footer 的状态
+        dispose: () => {
+          try { unsub(); } catch { /* already disposed */ }
+          if (generation === footerGeneration) {
+            _tui = null;
+            footerOn = false;
+          }
+        },
         invalidate() {},
         render(width: number): string[] {
           const sm = ctx.sessionManager;
@@ -383,12 +399,15 @@ export default function (pi: ExtensionAPI) {
     if (!cookie) cookie = process.env.OLLAMA_CLOUD_SESSION ?? "";
     thinkingLevel = pi.getThinkingLevel?.() || "off";
     footerOn = false;                            // 强制重建 footer,确保闭包捕获新 ctx
-    toggleFooter(ctx);
+    toggleFooter(ctx, true);
     if (cookie) refresh(ctx);
     startIdleTimer();
   });
 
-  pi.on("session_shutdown", async () => { stopIdleTimer(); });
+  pi.on("session_shutdown", async () => {
+    stopIdleTimer();
+    latestCtx = null;
+  });
 
   pi.on("agent_start", async (_e, ctx) => { latestCtx = ctx; agentBusy = true; });
   pi.on("agent_end", async (_e, ctx) => {
@@ -404,8 +423,12 @@ export default function (pi: ExtensionAPI) {
       // 延迟到 macrotask: 让排在我们后面的扩展
       // (如 pi-codex-usage) 的卸载逻辑先跑完,我们再挂载,避免被覆盖
       setTimeout(() => {
-        toggleFooter(ctx);
-        if (cookie) refresh(ctx);
+        const currentCtx = latestCtx;
+        if (!currentCtx || !isOllama(currentCtx)) return;
+        try {
+          toggleFooter(currentCtx, true);
+          if (cookie) refresh(currentCtx);
+        } catch { /* session or footer was disposed */ }
       }, 0);
     } else {
       // 切走时立即卸载自己,给目标 provider 的扩展让位
