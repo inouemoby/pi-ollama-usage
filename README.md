@@ -2,13 +2,12 @@
 
 Ollama Cloud usage monitor extension for [pi coding agent](https://github.com/earendil-works/pi-mono).
 
-Displays Ollama Cloud 5-hour and weekly quota usage in pi's footer in real time. Also provides a `/ollama` command and `ollama_usage` tool for quota checks.
+Displays Ollama Cloud 5-hour and weekly quota usage in pi's footer in real time. Also provides a `/ollama` command for quota checks.
 
 ## Features
 
 - **Footer integration**: Replaces pi's footer with token stats + `5h:xx% Wk:xx%` usage with exclamation mark alerts for over-consumption
 - **`/ollama` command**: Detailed bar chart view with reset countdowns
-- **`ollama_usage` tool**: Returns current quota usage on request
 - **Global login**: Cookie persists across all pi sessions and directories — login once, works everywhere
 - **Auto-activates**: Only takes over the footer when using an ollama-cloud provider model — doesn't affect other providers
 
