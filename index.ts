@@ -291,11 +291,14 @@ export default function (pi: ExtensionAPI) {
             }
           }
           const parts: string[] = [];
-          if (ti) parts.push(`↑${formatTokens(ti)}`);
-          if (to) parts.push(`↓${formatTokens(to)}`);
-          if (tr) parts.push(`R${formatTokens(tr)}`);
-          if (tw) parts.push(`W${formatTokens(tw)}`);
-          if (tc) parts.push(`$${tc.toFixed(3)}`);
+          const cachePartIndexes: number[] = [];
+          const tokenPartIndexes: number[] = [];
+          let costPartIndex = -1;
+          if (ti) { tokenPartIndexes.push(parts.length); parts.push(`↑${formatTokens(ti)}`); }
+          if (to) { tokenPartIndexes.push(parts.length); parts.push(`↓${formatTokens(to)}`); }
+          if (tr) { cachePartIndexes.push(parts.length); parts.push(`R${formatTokens(tr)}`); }
+          if (tw) { cachePartIndexes.push(parts.length); parts.push(`W${formatTokens(tw)}`); }
+          if (tc) { costPartIndex = parts.length; parts.push(`$${tc.toFixed(3)}`); }
 
           // Context %
           const cu = ctx.getContextUsage();
@@ -346,6 +349,7 @@ export default function (pi: ExtensionAPI) {
           // 宽度不足时的降级顺序:
           //   ① 先去掉提供商前缀 "(ollama) "
           //   ② 还不够 → 去掉 weekly 的模型括号 "(x%)"
+          //   ③ 之后依次省略缓存计数 → 费用 → 累计 token (见下方 fits 阶梯)
           const withProv = `(ollama) ${right}`;
           if (visibleWidth(left) + 2 + visibleWidth(withProv) <= width) {
             right = withProv;
@@ -354,6 +358,21 @@ export default function (pi: ExtensionAPI) {
               visibleWidth(left) + 2 + visibleWidth(right) > width) {
             parts[usageIdx] = usageNoWkModel;
             left = parts.join(" ");
+          }
+
+          // 缓存计数 → 费用 → 累计 token (与 pi-codex-usage 一致)
+          const fits = () => visibleWidth(left) + 2 + visibleWidth(right) <= width;
+          if (!fits()) {
+            for (const index of cachePartIndexes) parts[index] = "";
+            left = parts.filter(Boolean).join(" ");
+          }
+          if (!fits() && costPartIndex >= 0) {
+            parts[costPartIndex] = "";
+            left = parts.filter(Boolean).join(" ");
+          }
+          if (!fits() && tokenPartIndexes.length > 0) {
+            for (const index of tokenPartIndexes) parts[index] = "";
+            left = parts.filter(Boolean).join(" ");
           }
 
           const lw = visibleWidth(left);
